@@ -1,9 +1,18 @@
+import java.io.File
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
     id("com.google.devtools.ksp")
 }
+
+val signingProperties = Properties()
+val signingPropertiesFile = System.getenv("FACTORYBILL_SIGNING_PROPERTIES")
+    ?.let { File(it) }
+    ?.takeIf { it.isFile }
+signingPropertiesFile?.inputStream()?.use(signingProperties::load)
 
 android {
     namespace = "com.factorybill.app"
@@ -23,6 +32,23 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
     sourceSets { getByName("androidTest").assets.srcDir("$projectDir/schemas") }
+
+    signingConfigs {
+        if (signingPropertiesFile != null) {
+            create("release") {
+                storeFile = File(signingProperties.getProperty("storeFile"))
+                storePassword = signingProperties.getProperty("storePassword")
+                keyAlias = signingProperties.getProperty("keyAlias")
+                keyPassword = signingProperties.getProperty("keyPassword")
+            }
+        }
+    }
+
+    buildTypes {
+        getByName("release") {
+            if (signingPropertiesFile != null) signingConfig = signingConfigs.getByName("release")
+        }
+    }
 }
 
 ksp { arg("room.schemaLocation", "$projectDir/schemas") }

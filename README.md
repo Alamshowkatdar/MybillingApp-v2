@@ -26,6 +26,10 @@ Open the project in Android Studio with JDK 17 and Android SDK 34, or run:
 
 Install on a connected device with `./gradlew :app:installDebug`. The Room migration instrumentation test requires an emulator or device.
 
+## Local release signing
+
+Keep the release keystore and its password properties outside the repository. To sign a release locally, set `FACTORYBILL_SIGNING_PROPERTIES` to a protected properties file containing `storeFile`, `storePassword`, `keyAlias`, and `keyPassword`, then run `./gradlew :app:assembleRelease`. Do not commit the keystore or signing properties, or upload them to the public repository. Back up the keystore securely: future app updates must use the same signing key.
+
 ## Data and privacy
 
 The database and confirmed scan images are stored on-device. OCR runs locally using the bundled Latin-script ML Kit model; handwriting and other scripts may be inaccurate. Scan results are editable suggestions, never issued without explicit confirmation. No cloud sync or export/restore feature is currently provided. Uninstalling the app may remove its local business records, so arrange an appropriate backup before using it for ongoing operations.
