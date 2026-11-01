@@ -30,6 +30,7 @@ class HomeViewModel(private val repo: Repository) : ViewModel() {
     val expenses = repo.expensesTotal.state(viewModelScope, 0L)
     val negativeStock = repo.negativeStockCount.state(viewModelScope, 0)
     val invoices = repo.invoices.state(viewModelScope, emptyList())
+    val company = repo.company.state(viewModelScope, null)
 
     suspend fun pdfFor(ctx: Context, invoiceId: Long, accent: Int): File? = withContext(Dispatchers.IO) {
         val inv = repo.invoice(invoiceId) ?: return@withContext null
@@ -38,11 +39,18 @@ class HomeViewModel(private val repo: Repository) : ViewModel() {
     }
 }
 
-class LineState(p: Product) {
+class LineState(p: Product = Product(name = "")) {
     var product by mutableStateOf(p)
     var qty by mutableStateOf("1")
     var price by mutableStateOf(rupeesText(p.defaultPricePaise))
     var gst by mutableStateOf(p.defaultGstRate)
+
+    fun use(product: Product) {
+        this.product = product
+        qty = "1"
+        price = rupeesText(product.defaultPricePaise)
+        gst = product.defaultGstRate
+    }
 }
 
 class InvoiceViewModel(private val repo: Repository) : ViewModel() {
@@ -50,11 +58,11 @@ class InvoiceViewModel(private val repo: Repository) : ViewModel() {
     val products = repo.products.state(viewModelScope, emptyList())
     private val company = repo.company.state(viewModelScope, null)
 
-    var customer by mutableStateOf<Customer?>(null)
+    var customerDraft by mutableStateOf(Customer(name = ""))
     var intraState by mutableStateOf(true)
     var pricesIncludeGst by mutableStateOf(false)
     var placeOfSupply by mutableStateOf("")
-    val lines = mutableStateListOf<LineState>()
+    val lines = mutableStateListOf(LineState())
     var payment by mutableStateOf("")
     var message by mutableStateOf<String?>(null)
 
@@ -65,7 +73,7 @@ class InvoiceViewModel(private val repo: Repository) : ViewModel() {
     fun liveStock(l: LineState) = products.value.firstOrNull { it.id == l.product.id }?.stockQty ?: l.product.stockQty
 
     fun selectCustomer(c: Customer) {
-        customer = c
+        customerDraft = c.copy()
         company.value?.let { Validation.sameState(c.gstin, it.gstin) }?.let { intraState = it }
     }
 
@@ -73,8 +81,14 @@ class InvoiceViewModel(private val repo: Repository) : ViewModel() {
         try { block() } catch (e: IllegalArgumentException) { message = e.message }
     }
 
-    fun addCustomer(c: Customer) = guarded { selectCustomer(c.copy(id = repo.addCustomer(c))) }
-    fun addProduct(p: Product) = guarded { lines.add(LineState(p.copy(id = repo.addProduct(p)))) }
+    fun updateCustomer(update: (Customer) -> Customer) {
+        customerDraft = update(customerDraft)
+        company.value?.let { Validation.sameState(customerDraft.gstin, it.gstin) }?.let { intraState = it }
+        message = null
+    }
+
+    fun addLine() { lines.add(LineState()) }
+
     fun addLine(product: Product, qty: String = "1", price: String? = null, gst: Double? = null) {
         lines.add(LineState(product).apply {
             this.qty = qty
@@ -84,14 +98,27 @@ class InvoiceViewModel(private val repo: Repository) : ViewModel() {
     }
 
     fun issue() {
-        val c = customer ?: run { message = "Select or add a customer"; return }
+        val c = customerDraft
+        if (c.name.isBlank()) { message = "Enter the customer name"; return }
+        if (!Validation.phoneOk(c.phone)) { message = "Enter a valid customer phone number"; return }
+        if (!Validation.gstinFormatOk(c.gstin)) { message = "Customer GSTIN format looks invalid"; return }
         val pay = paymentPaise() ?: run { message = "Enter a valid payment amount"; return }
         val lineErrors = Validation.validateLineInputs(inputs())
         if (lineErrors.isNotEmpty()) { message = lineErrors.joinToString("; "); return }
-        val draftLines = lines.map { DraftLine(it.product, it.qty.toDoubleOrNull() ?: 0.0, Money.parseRupees(it.price) ?: -1L, it.gst) }
+        if (lines.any { it.product.name.isBlank() }) { message = "Enter a product name for every invoice line"; return }
+        val draftLines = lines.map { line ->
+            val price = Money.parseRupees(line.price) ?: -1L
+            DraftLine(
+                line.product.copy(defaultPricePaise = price, defaultGstRate = line.gst, stockQty = 0.0),
+                line.qty.toDoubleOrNull() ?: 0.0,
+                price,
+                line.gst,
+            )
+        }
         guarded {
             repo.issueInvoice(InvoiceDraft(c, draftLines, pay, intraState, placeOfSupply, pricesIncludeGst))
-            lines.clear(); payment = ""; customer = null; placeOfSupply = ""; message = "Invoice issued"
+            lines.clear(); lines.add(LineState())
+            payment = ""; customerDraft = Customer(name = ""); placeOfSupply = ""; message = "Invoice issued"
         }
     }
 }

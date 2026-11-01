@@ -28,7 +28,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         val app = application as FactoryApp
         setContent {
-            val theme by app.settings.theme.collectAsStateWithLifecycle(ThemeMode.SYSTEM)
+            val theme by app.settings.theme.collectAsStateWithLifecycle(ThemeMode.LIGHT)
             val accent by app.settings.accent.collectAsStateWithLifecycle(0)
             FactoryTheme(theme, AccentPalette[accent]) { Root(app) }
         }
@@ -46,18 +46,24 @@ private fun Root(app: FactoryApp) {
         Dest("more", "Settings", Icons.Default.MoreHoriz),
     )
     val current = nav.currentBackStackEntryAsState().value?.destination?.route
+    val selectedRoute = current?.substringBeforeLast("/")?.takeIf { current.startsWith("invoice/") } ?: current
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
-        bottomBar = { NavigationBar { dests.forEach { d ->
-            NavigationBarItem(current == d.route, {
+        bottomBar = { NavigationBar(
+            containerColor = MaterialTheme.colorScheme.surface,
+            tonalElevation = 0.dp,
+        ) { dests.forEach { d ->
+            NavigationBarItem(selectedRoute == d.route, {
                 nav.navigate(d.route) { popUpTo("home"); launchSingleTop = true }
             }, { Icon(d.icon, d.label) }, label = { Text(d.label) }) } } },
     ) { pad ->
         NavHost(nav, "home", Modifier.padding(pad)) {
             composable("home") {
-                HomeScreen(viewModel(factory = viewModelFactory { initializer { HomeViewModel(app.repo) } })) { id ->
-                    nav.navigate("invoice/$id")
-                }
+                HomeScreen(
+                    vm = viewModel(factory = viewModelFactory { initializer { HomeViewModel(app.repo) } }),
+                    onInvoiceSelect = { id -> nav.navigate("invoice/$id") },
+                    onNavigate = { route -> nav.navigate(route) { launchSingleTop = true } },
+                )
             }
             composable("invoice") { InvoiceScreen(viewModel(factory = viewModelFactory { initializer { InvoiceViewModel(app.repo) } })) }
             composable("invoice/{id}") { entry ->

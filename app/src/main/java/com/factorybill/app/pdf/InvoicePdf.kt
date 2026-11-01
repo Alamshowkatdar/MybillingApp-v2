@@ -110,7 +110,7 @@ object InvoicePdf {
             if (pg.y + 16 > H - M - 24) { pg.newPage(); pg.y = M + 10; header() }
             pg.c.drawText(l.productName.take(22), M + 3, pg.y, cell)
             pg.c.drawText(l.hsn.take(12), colHsn, pg.y, cellR)
-            pg.c.drawText(l.qty.toString().removeSuffix(".0"), colQty, pg.y, cellR)
+            pg.c.drawText("${l.qty.toString().removeSuffix(".0")} ${l.unit}".trim(), colQty, pg.y, cellR)
             pg.c.drawText(Money.format(l.unitPricePaise), colRate, pg.y, cellR)
             pg.c.drawText(Money.format(l.taxablePaise), colTax, pg.y, cellR)
             pg.c.drawText("${l.gstRate.toString().removeSuffix(".0")}%", colGst, pg.y, cellR)

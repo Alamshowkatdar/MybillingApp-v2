@@ -40,11 +40,20 @@ class Repository(private val db: AppDatabase) {
     val expensesTotal = dao.expensesTotal()
     val negativeStockCount = dao.negativeStockCount()
 
-    suspend fun addCustomer(c: Customer): Long {
+    private fun validateCustomer(c: Customer) {
         require(c.name.isNotBlank()) { "Customer name is required" }
         require(Validation.phoneOk(c.phone)) { "Phone number looks invalid" }
         require(Validation.gstinFormatOk(c.gstin)) { "GSTIN format looks invalid (format check only, not verified)" }
+    }
+
+    suspend fun addCustomer(c: Customer): Long {
+        validateCustomer(c)
         return dao.insertCustomer(c.copy(gstin = c.gstin.trim().uppercase()))
+    }
+
+    private suspend fun updateCustomer(c: Customer) {
+        validateCustomer(c)
+        dao.updateCustomer(c.copy(gstin = c.gstin.trim().uppercase()))
     }
 
     suspend fun addProduct(p: Product): Long = db.withTransaction {
@@ -90,7 +99,10 @@ class Repository(private val db: AppDatabase) {
         val errors = Validation.validateLines(inputs, d.paymentPaise, totals)
         require(errors.isEmpty()) { errors.joinToString("; ") }
 
-        val customerId = if (d.customer.id == 0L) addCustomer(d.customer) else d.customer.id
+        val customerId = if (d.customer.id == 0L) addCustomer(d.customer) else {
+            updateCustomer(d.customer)
+            d.customer.id
+        }
         val now = System.currentTimeMillis()
         val number = "INV-%04d".format(dao.invoiceCount() + 1)
         val invoiceId = dao.insertInvoice(
@@ -106,7 +118,8 @@ class Repository(private val db: AppDatabase) {
             val productId = if (l.product.id == 0L) addProduct(l.product.copy(stockQty = 0.0)) else l.product.id
             dao.insertInvoiceLine(
                 InvoiceLine(
-                    invoiceId = invoiceId, productId = productId, productName = l.product.name, hsn = l.product.hsn, qty = l.qty,
+                    invoiceId = invoiceId, productId = productId, productName = l.product.name,
+                    hsn = l.product.hsn, unit = l.product.unit, qty = l.qty,
                     unitPricePaise = l.unitPricePaise, gstRate = l.gstRate,
                     taxablePaise = r.taxablePaise, gstPaise = r.gstPaise, totalPaise = r.totalPaise,
                 )

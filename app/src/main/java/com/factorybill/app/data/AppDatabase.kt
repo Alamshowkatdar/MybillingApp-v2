@@ -12,7 +12,7 @@ import androidx.room.migration.Migration
         Purchase::class, PurchaseLine::class, Expense::class, Employee::class,
         SalaryEntry::class, InventoryMovement::class, CompanyProfile::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -37,7 +37,13 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        val MIGRATIONS: Array<Migration> = arrayOf(MIGRATION_1_2)
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE invoice_lines ADD COLUMN unit TEXT NOT NULL DEFAULT 'pcs'")
+            }
+        }
+
+        val MIGRATIONS: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3)
 
         fun build(context: Context): AppDatabase =
             Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "factorybill.db")

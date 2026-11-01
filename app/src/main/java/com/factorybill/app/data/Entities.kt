@@ -53,6 +53,7 @@ data class InvoiceLine(
     val productId: Long,
     val productName: String,
     val hsn: String = "",
+    val unit: String = "pcs",
     val qty: Double,
     val unitPricePaise: Long,
     val gstRate: Double,

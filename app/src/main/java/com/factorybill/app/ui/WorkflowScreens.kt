@@ -631,7 +631,7 @@ fun InvoiceDetailsScreen(repo: Repository, invoiceId: Long, onBack: () -> Unit) 
         items(lines, key = { it.id }) { line ->
             ListItem(
                 headlineContent = { Text(line.productName) },
-                supportingContent = { Text("HSN ${line.hsn.ifBlank { "—" }} · ${line.qty} × ${Money.format(line.unitPricePaise)} · GST ${line.gstRate}%") },
+                supportingContent = { Text("HSN ${line.hsn.ifBlank { "—" }} · ${line.qty} ${line.unit} × ${Money.format(line.unitPricePaise)} · GST ${line.gstRate}%") },
                 trailingContent = { Text(Money.format(line.totalPaise)) },
             )
         }
