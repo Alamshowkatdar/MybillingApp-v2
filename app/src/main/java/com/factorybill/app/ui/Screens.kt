@@ -1,8 +1,12 @@
 package com.factorybill.app.ui
 
+import android.graphics.Bitmap
 import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -19,11 +23,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Inventory2
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material3.*
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.runtime.*
+import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
@@ -35,10 +42,13 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.factorybill.app.FactoryApp
 import com.factorybill.app.core.*
 import com.factorybill.app.data.*
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import androidx.compose.ui.layout.ContentScale
 
 @Composable
 private fun Field(label: String, value: String, onChange: (String) -> Unit, modifier: Modifier = Modifier, number: Boolean = false) =
@@ -54,6 +64,33 @@ private fun MetricCard(label: String, value: String, modifier: Modifier, bad: Bo
                 color = if (bad) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
         }
     }
+
+@Composable
+private fun CompanyLogo(path: String?, modifier: Modifier = Modifier) {
+    val logo by produceState<Bitmap?>(null, path) {
+        value = path?.let { logoPath ->
+            withContext(Dispatchers.IO) { CompanyLogoStore.decode(logoPath, 256) }
+        }
+    }
+    Surface(
+        modifier = modifier,
+        shape = MaterialTheme.shapes.small,
+        color = MaterialTheme.colorScheme.primaryContainer,
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            if (logo == null) {
+                Text("F", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
+            } else {
+                Image(
+                    bitmap = logo!!.asImageBitmap(),
+                    contentDescription = "Company logo",
+                    modifier = Modifier.fillMaxSize().padding(3.dp),
+                    contentScale = ContentScale.Fit,
+                )
+            }
+        }
+    }
+}
 
 @Composable
 private fun QuickAction(
@@ -114,11 +151,7 @@ fun HomeScreen(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primaryContainer) {
-                    Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
-                        Text("F", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
-                    }
-                }
+                CompanyLogo(company?.logoPath, Modifier.size(44.dp))
             }
         }
         item {
@@ -223,6 +256,18 @@ fun InvoiceScreen(vm: InvoiceViewModel) {
     Column(Modifier.fillMaxSize()) {
         LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             item { Text("Create invoice", style = MaterialTheme.typography.headlineMedium) }
+            item {
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Field("Invoice number (optional)", vm.invoiceNumber, { vm.invoiceNumber = it })
+                        Text(
+                            "Enter your own number, or leave blank to assign the next one automatically.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
             item {
                 Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -377,6 +422,23 @@ fun MoreScreen(app: FactoryApp) {
     val saved by app.repo.company.collectAsStateWithLifecycle(null)
     var form by remember(saved) { mutableStateOf(saved ?: CompanyProfile()) }
     var msg by remember { mutableStateOf<String?>(null) }
+    val logoPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            scope.launch {
+                try {
+                    val imported = withContext(Dispatchers.IO) { CompanyLogoStore.import(app, uri) }
+                    val previousDraft = form.logoPath
+                    form = form.copy(logoPath = imported)
+                    if (previousDraft != saved?.logoPath) {
+                        withContext(Dispatchers.IO) { CompanyLogoStore.delete(app, previousDraft) }
+                    }
+                    msg = "Logo selected. Save company details to apply it."
+                } catch (e: Exception) {
+                    msg = e.message ?: "Could not select this logo."
+                }
+            }
+        }
+    }
     LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item { Text("Settings", style = MaterialTheme.typography.headlineMedium) }
         item { Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -405,11 +467,47 @@ fun MoreScreen(app: FactoryApp) {
             Field("Email", form.email, { form = form.copy(email = it) }); Field("Bank name", form.bankName, { form = form.copy(bankName = it) })
             Field("Account number", form.accountNumber, { form = form.copy(accountNumber = it) }); Field("IFSC", form.ifsc, { form = form.copy(ifsc = it.uppercase()) })
             Field("UPI ID (for payment QR)", form.upiId, { form = form.copy(upiId = it) })
-            Text("Invoice template", style = MaterialTheme.typography.titleSmall)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf("classic", "modern", "compact").forEach { t ->
-                FilterChip(form.template == t, { form = form.copy(template = t) }, { Text(t.replaceFirstChar(Char::uppercase)) }) } }
+            Text("Company logo (optional)", style = MaterialTheme.typography.titleSmall)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                CompanyLogo(form.logoPath, Modifier.size(64.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("Shown on the dashboard and printed on invoices.", style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    TextButton(onClick = { logoPicker.launch(arrayOf("image/*")) }) {
+                        Icon(Icons.Default.Image, contentDescription = null)
+                        Spacer(Modifier.width(6.dp))
+                        Text(if (form.logoPath == null) "Choose logo" else "Change logo")
+                    }
+                    if (form.logoPath != null) {
+                        TextButton(onClick = { form = form.copy(logoPath = null); msg = "Logo will be removed when you save." }) {
+                            Text("Remove logo")
+                        }
+                    }
+                }
+            }
+            Text("A4 invoice PDF · 210 × 297 mm", style = MaterialTheme.typography.titleSmall)
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("classic" to "Classic A4", "modern" to "Modern A4", "compact" to "Compact A4").forEach { (value, label) ->
+                    FilterChip(form.template == value, { form = form.copy(template = value) }, { Text(label) })
+                }
+            }
             msg?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-            Button({ scope.launch { msg = try { app.repo.saveCompany(form); "Saved" } catch (e: IllegalArgumentException) { e.message } } }, Modifier.fillMaxWidth()) { Text("Save") }
+            Button({
+                scope.launch {
+                    val oldLogo = saved?.logoPath
+                    msg = try {
+                        app.repo.saveCompany(form)
+                        if (oldLogo != form.logoPath) {
+                            withContext(Dispatchers.IO) { CompanyLogoStore.delete(app, oldLogo) }
+                        }
+                        "Company details and logo saved."
+                    } catch (e: IllegalArgumentException) {
+                        e.message
+                    } catch (e: Exception) {
+                        e.message ?: "Could not save company details."
+                    }
+                }
+            }, Modifier.fillMaxWidth()) { Text("Save") }
         } } }
     }
 }

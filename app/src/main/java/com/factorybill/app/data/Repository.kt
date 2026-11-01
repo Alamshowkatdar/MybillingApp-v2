@@ -18,8 +18,16 @@ data class InvoiceDraft(
     val placeOfSupply: String = "",
     val pricesIncludeGst: Boolean = false,
     val scanImagePath: String? = null, // only set after the user confirmed the OCR review
+    val invoiceNumber: String = "",
 )
-data class PurchaseDraft(val supplier: Supplier, val lines: List<DraftLine>, val paidPaise: Long, val note: String = "")
+data class PurchaseDraft(
+    val supplier: Supplier,
+    val lines: List<DraftLine>,
+    val paidPaise: Long,
+    val note: String = "",
+    val pricesIncludeGst: Boolean = false,
+    val scanImagePath: String? = null,
+)
 
 /** All writes that touch money or stock run in ONE transaction and log inventory movements. */
 class Repository(private val db: AppDatabase) {
@@ -99,12 +107,27 @@ class Repository(private val db: AppDatabase) {
         val errors = Validation.validateLines(inputs, d.paymentPaise, totals)
         require(errors.isEmpty()) { errors.joinToString("; ") }
 
+        val requestedNumber = d.invoiceNumber.trim()
+        require(Validation.invoiceNumberOk(requestedNumber)) {
+            "Invoice number must be up to 16 letters, numbers, hyphens or slashes."
+        }
+        val number = if (requestedNumber.isNotEmpty()) {
+            require(!dao.invoiceNumberExists(requestedNumber)) { "That invoice number is already in use." }
+            requestedNumber
+        } else {
+            var sequence = dao.invoiceCount() + 1
+            var candidate: String
+            do {
+                candidate = "INV-%04d".format(sequence++)
+            } while (dao.invoiceNumberExists(candidate))
+            candidate
+        }
+
         val customerId = if (d.customer.id == 0L) addCustomer(d.customer) else {
             updateCustomer(d.customer)
             d.customer.id
         }
         val now = System.currentTimeMillis()
-        val number = "INV-%04d".format(dao.invoiceCount() + 1)
         val invoiceId = dao.insertInvoice(
             Invoice(
                 number = number, dateMillis = now, customerId = customerId, intraState = d.intraState,
@@ -149,7 +172,7 @@ class Repository(private val db: AppDatabase) {
     }
 
     suspend fun savePurchase(d: PurchaseDraft): Long = db.withTransaction {
-        val inputs = d.lines.map { LineInput(it.qty, it.unitPricePaise, it.gstRate) }
+        val inputs = d.lines.map { LineInput(it.qty, it.unitPricePaise, it.gstRate, d.pricesIncludeGst) }
         val inputErrors = Validation.validateLineInputs(inputs)
         require(inputErrors.isEmpty()) { inputErrors.joinToString("; ") }
         val totals = InvoiceCalculator.calculate(inputs, true, d.paidPaise)
@@ -160,14 +183,15 @@ class Repository(private val db: AppDatabase) {
         val now = System.currentTimeMillis()
         val purchaseId = dao.insertPurchase(
             Purchase(supplierId = supplierId, dateMillis = now, taxablePaise = totals.taxablePaise, gstPaise = totals.gstPaise,
-                totalPaise = totals.totalPaise, paidPaise = d.paidPaise, note = d.note)
+                totalPaise = totals.totalPaise, paidPaise = d.paidPaise, note = d.note, scanImagePath = d.scanImagePath)
         )
         d.lines.forEachIndexed { i, l ->
             val r = totals.lines[i]
-            dao.insertPurchaseLine(PurchaseLine(purchaseId = purchaseId, productId = l.product.id, qty = l.qty,
+            val productId = if (l.product.id == 0L) dao.insertProduct(l.product.copy(stockQty = 0.0)) else l.product.id
+            dao.insertPurchaseLine(PurchaseLine(purchaseId = purchaseId, productId = productId, qty = l.qty,
                 unitCostPaise = l.unitPricePaise, gstRate = l.gstRate, taxablePaise = r.taxablePaise, gstPaise = r.gstPaise, totalPaise = r.totalPaise))
-            dao.addStock(l.product.id, l.qty)
-            dao.insertMovement(InventoryMovement(productId = l.product.id, delta = l.qty, reason = "PURCHASE", refId = purchaseId, timestamp = now))
+            dao.addStock(productId, l.qty)
+            dao.insertMovement(InventoryMovement(productId = productId, delta = l.qty, reason = "PURCHASE", refId = purchaseId, timestamp = now))
         }
         purchaseId
     }
@@ -181,17 +205,25 @@ class Repository(private val db: AppDatabase) {
     suspend fun addEmployee(e: Employee): Long {
         require(e.name.isNotBlank()) { "Employee name is required" }
         require(e.monthlySalaryPaise >= 0) { "Salary cannot be negative" }
+        require(e.startDateMillis > 0) { "Start date is required" }
         return dao.insertEmployee(e)
     }
 
     suspend fun addSalaryEntry(s: SalaryEntry): Long {
         require(s.amountPaise > 0) { "Amount must be greater than 0" }
         require(runCatching { SalaryType.valueOf(s.type) }.isSuccess) { "Unknown entry type" }
+        require(dao.employee(s.employeeId) != null) { "Employee not found" }
         return dao.insertSalaryEntry(s)
     }
 
-    suspend fun recordSalary(employeeId: Long, type: SalaryType, amountPaise: Long, note: String = "") {
-        addSalaryEntry(SalaryEntry(employeeId = employeeId, type = type.name, amountPaise = amountPaise, dateMillis = System.currentTimeMillis(), note = note))
+    suspend fun recordSalary(
+        employeeId: Long,
+        type: SalaryType,
+        amountPaise: Long,
+        note: String = "",
+        dateMillis: Long = System.currentTimeMillis(),
+    ) {
+        addSalaryEntry(SalaryEntry(employeeId = employeeId, type = type.name, amountPaise = amountPaise, dateMillis = dateMillis, note = note))
     }
 
     fun salaryEntries(employeeId: Long) = dao.salaryEntries(employeeId)

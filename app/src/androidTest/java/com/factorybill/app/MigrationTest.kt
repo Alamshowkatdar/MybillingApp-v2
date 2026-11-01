@@ -20,7 +20,7 @@ class MigrationTest {
             execSQL("INSERT INTO invoices(number,dateMillis,customerId,intraState,taxablePaise,gstPaise,totalPaise,paymentPaise,scanImagePath,status,voidReason) VALUES('INV-0001',1,1,1,10000,1800,11800,0,NULL,'ISSUED',NULL)")
             close()
         }
-        val db = helper.runMigrationsAndValidate("mig-test", 3, true, *AppDatabase.MIGRATIONS)
+        val db = helper.runMigrationsAndValidate("mig-test", 6, true, *AppDatabase.MIGRATIONS)
         db.query("SELECT COUNT(*) FROM customers").use { c -> c.moveToFirst(); assertEquals(1, c.getInt(0)) }
         db.query("SELECT pricesIncludeGst, placeOfSupply FROM invoices WHERE number = 'INV-0001'").use { c ->
             c.moveToFirst()
@@ -28,5 +28,6 @@ class MigrationTest {
             assertEquals("", c.getString(1))
         }
         db.query("SELECT hsn, unit FROM invoice_lines LIMIT 0").close()
+        db.query("SELECT logoPath FROM company_profile LIMIT 0").close()
     }
 }

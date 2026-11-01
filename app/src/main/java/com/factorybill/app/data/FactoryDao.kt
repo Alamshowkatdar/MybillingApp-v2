@@ -26,6 +26,8 @@ interface FactoryDao {
     @Insert suspend fun insertInvoice(i: Invoice): Long
     @Insert suspend fun insertInvoiceLine(l: InvoiceLine)
     @Query("SELECT COUNT(*) FROM invoices") suspend fun invoiceCount(): Int
+    @Query("SELECT EXISTS(SELECT 1 FROM invoices WHERE number = :number COLLATE NOCASE)")
+    suspend fun invoiceNumberExists(number: String): Boolean
     @Query("SELECT * FROM invoices ORDER BY id DESC") fun invoices(): Flow<List<Invoice>>
     @Query("SELECT * FROM invoices WHERE id = :id") suspend fun invoice(id: Long): Invoice?
     @Query("SELECT * FROM invoice_lines WHERE invoiceId = :id") suspend fun invoiceLines(id: Long): List<InvoiceLine>
@@ -44,6 +46,7 @@ interface FactoryDao {
     // Employees / salary ledger
     @Insert suspend fun insertEmployee(e: Employee): Long
     @Query("SELECT * FROM employees ORDER BY name COLLATE NOCASE") fun employees(): Flow<List<Employee>>
+    @Query("SELECT * FROM employees WHERE id = :id") suspend fun employee(id: Long): Employee?
     @Insert suspend fun insertSalaryEntry(s: SalaryEntry): Long
     @Query("SELECT * FROM salary_entries WHERE employeeId = :id ORDER BY dateMillis DESC, id DESC")
     fun salaryEntries(id: Long): Flow<List<SalaryEntry>>

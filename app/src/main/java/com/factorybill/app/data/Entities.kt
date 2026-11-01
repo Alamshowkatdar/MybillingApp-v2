@@ -81,6 +81,7 @@ data class Purchase(
     val totalPaise: Long,
     val paidPaise: Long,
     val note: String = "",
+    val scanImagePath: String? = null,
 )
 
 @Entity(tableName = "purchase_lines", indices = [Index("purchaseId")])
@@ -111,6 +112,7 @@ data class Employee(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val name: String,
     val monthlySalaryPaise: Long,
+    val startDateMillis: Long = 0,
     val active: Boolean = true,
 )
 
@@ -147,4 +149,5 @@ data class CompanyProfile(
     val ifsc: String = "",
     val upiId: String = "",
     val template: String = "classic", // classic | modern | compact
+    val logoPath: String? = null,
 )

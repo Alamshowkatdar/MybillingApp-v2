@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
     <!-- No CAMERA permission: photos are taken through the system camera app (TakePicture),
          so there is no permission-denied path and no extra data access. -->
     <application

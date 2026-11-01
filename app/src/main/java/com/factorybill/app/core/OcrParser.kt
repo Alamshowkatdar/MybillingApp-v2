@@ -34,9 +34,12 @@ object OcrParser {
     private val PIN = Regex("\\b\\d{6}\\b")
     private val GST_PCT = Regex("(\\d+(?:\\.\\d+)?)\\s*%")
     private val PAYMENT = Regex("(?i)(?:part\\s*payment|payment|paid|received|advance)[^\\d\\n]*([\\d,]+(?:\\.\\d+)?)")
+    private val ITEM_CURRENCY = Regex("(?i)(?:₹|\\b(?:rs\\.?|inr)\\s*)")
     private val ITEM = Regex(
-        "^(?<name>[A-Za-z][A-Za-z0-9 .\\-/()]*?)\\s+(?<qty>\\d+(?:\\.\\d+)?)\\s*(?i:pcs|nos|no|kg|x|×|units?)?" +
-            "\\s+(?:@\\s*)?(?<rate>\\d+(?:\\.\\d+)?)(?:\\s+(?<amt>\\d+(?:\\.\\d+)?))?\\s*$"
+        "^(?<name>[A-Za-z][A-Za-z0-9 .,&+'\"/#()_-]*?)\\s+" +
+            "(?<qty>\\d+(?:\\.\\d+)?)\\s*(?i:pcs|nos|no|kg|x|×|units?|m|ltr)?" +
+            "\\s+(?:@\\s*)?(?<rate>\\d+(?:\\.\\d+)?)" +
+            "(?:\\s+(?<amt>\\d+(?:\\.\\d+)?))?(?:\\s+\\d+(?:\\.\\d+)?)*\\s*$"
     )
     private val NOT_ITEM = Regex(
         "^(?i:sub\\s*total|total|grand|gst|cgst|sgst|igst|tax|paid|received|advance|balance|due|amount|" +
@@ -75,7 +78,12 @@ object OcrParser {
     private fun parseItem(line: String): SuggestedLine? {
         if (NOT_ITEM.containsMatchIn(line)) return null
         val pct = GST_PCT.find(line)
-        val cleaned = if (pct != null) line.replace(pct.value, "").trim() else line
+        val cleaned = line.replace(Regex("^\\s*\\d+[.)]\\s*"), "")
+            .replace(ITEM_CURRENCY, "")
+            .replace(pct?.value.orEmpty(), "")
+            .replace(",", "")
+            .replace(Regex("\\s+"), " ")
+            .trim()
         val m = ITEM.find(cleaned) ?: return null
         val rate = m.groups["rate"]!!.value
         return SuggestedLine(

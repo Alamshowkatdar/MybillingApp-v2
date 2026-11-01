@@ -1,6 +1,7 @@
 package com.factorybill.app.ui
 
 import android.content.Intent
+import android.app.DatePickerDialog
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -33,12 +34,18 @@ import com.factorybill.app.pdf.InvoicePdf
 import com.factorybill.app.scan.OcrScanner
 import com.factorybill.app.scan.ScanResult
 import com.factorybill.app.scan.ScanStore
+import com.factorybill.app.scan.LocalAiBillScanner
+import com.factorybill.app.scan.LocalAiScanResult
+import com.factorybill.app.scan.CloudBillScanner
+import com.factorybill.app.scan.CloudScanConfig
+import com.factorybill.app.scan.CloudScanResult
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
+import java.util.Calendar
 import java.util.Locale
 
 @Composable
@@ -64,6 +71,38 @@ private fun WorkflowField(
 private fun WorkflowField(label: String, value: String, onChange: (String) -> Unit) =
     WorkflowField(label, value, onChange, false)
 
+@Composable
+private fun DatePickerField(label: String, dateMillis: Long, onDateSelected: (Long) -> Unit) {
+    val context = LocalContext.current
+    val calendar = Calendar.getInstance().apply { timeInMillis = dateMillis }
+    OutlinedButton(
+        onClick = {
+            DatePickerDialog(
+                context,
+                { _, year, month, day ->
+                    onDateSelected(Calendar.getInstance().apply {
+                        set(year, month, day, 12, 0, 0)
+                        set(Calendar.MILLISECOND, 0)
+                    }.timeInMillis)
+                },
+                calendar.get(Calendar.YEAR),
+                calendar.get(Calendar.MONTH),
+                calendar.get(Calendar.DAY_OF_MONTH),
+            ).show()
+        },
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Text("$label · ${SimpleDateFormat("dd MMM yyyy", Locale("en", "IN")).format(Date(dateMillis))}")
+    }
+}
+
+private fun todayMillis(): Long = Calendar.getInstance().apply {
+    set(Calendar.HOUR_OF_DAY, 12)
+    set(Calendar.MINUTE, 0)
+    set(Calendar.SECOND, 0)
+    set(Calendar.MILLISECOND, 0)
+}.timeInMillis
+
 private class ReviewLine(
     name: String,
     qty: String,
@@ -84,8 +123,10 @@ fun ScanScreen(repo: Repository) {
     var cameraFile by remember { mutableStateOf<File?>(null) }
     var busy by remember { mutableStateOf(false) }
     var rawText by remember { mutableStateOf("") }
+    var scanSource by remember { mutableStateOf("") }
     var message by remember { mutableStateOf<String?>(null) }
     var customer by remember { mutableStateOf("") }
+    var invoiceNumber by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
     var gstin by remember { mutableStateOf("") }
     var address by remember { mutableStateOf("") }
@@ -93,41 +134,85 @@ fun ScanScreen(repo: Repository) {
     var placeOfSupply by remember { mutableStateOf("") }
     var intraState by remember { mutableStateOf(true) }
     var pricesIncludeGst by remember { mutableStateOf(false) }
+    var isPurchaseBill by remember { mutableStateOf(true) }
+    var allowCloudScan by remember { mutableStateOf(false) }
     val lines = remember { mutableStateListOf<ReviewLine>() }
 
     fun process(uri: android.net.Uri) {
         imageUri = uri
         rawText = ""
+        scanSource = ""
         message = null
+        customer = ""
+        invoiceNumber = ""
+        phone = ""
+        gstin = ""
+        address = ""
+        payment = ""
+        placeOfSupply = ""
+        lines.clear()
         busy = true
         scope.launch {
-            when (val result = OcrScanner.recognize(context, uri)) {
-                is ScanResult.Success -> {
-                    val suggestion = OcrParser.parse(result.text)
-                    rawText = result.text
-                    customer = suggestion.customerName.orEmpty()
-                    phone = suggestion.phone.orEmpty()
-                    gstin = suggestion.gstin.orEmpty()
-                    address = suggestion.address.orEmpty()
-                    payment = suggestion.paymentPaise?.let(::rupeesText).orEmpty()
-                    lines.clear()
-                    suggestion.lines.forEach { item ->
-                        lines += ReviewLine(
-                            item.name,
-                            item.qty?.toString().orEmpty(),
-                            item.unitPricePaise?.let(::rupeesText).orEmpty(),
-                            item.gstRate ?: 18.0,
-                        )
+            fun applySuggestion(suggestion: OcrSuggestion, source: String) {
+                rawText = suggestion.rawText
+                scanSource = source
+                customer = suggestion.customerName.orEmpty()
+                phone = suggestion.phone.orEmpty()
+                gstin = suggestion.gstin.orEmpty()
+                address = suggestion.address.orEmpty()
+                payment = suggestion.paymentPaise?.let(::rupeesText).orEmpty()
+                lines.clear()
+                suggestion.lines.forEach { item ->
+                    lines += ReviewLine(
+                        item.name,
+                        item.qty?.toString().orEmpty(),
+                        item.unitPricePaise?.let(::rupeesText).orEmpty(),
+                        item.gstRate ?: 18.0,
+                    )
+                }
+                message = if (lines.isEmpty()) {
+                    "$source found no clear line items. Add items yourself and verify every value."
+                } else {
+                    "$source found ${lines.size} item${if (lines.size == 1) "" else "s"}. Verify all details before saving."
+                }
+            }
+
+            val aiResult = LocalAiBillScanner.recognize(context, uri) { message = it }
+            when (aiResult) {
+                is LocalAiScanResult.Success -> {
+                    applySuggestion(aiResult.suggestion, "Gemini Nano on this phone")
+                }
+                is LocalAiScanResult.Unavailable -> {
+                    val reason = aiResult.reason
+                    val cloudResult = if (allowCloudScan && CloudScanConfig.isConfigured) {
+                        message = "Sending this bill image to Google Gemini through your secured Cloud Run service…"
+                        CloudBillScanner.recognize(context, uri)
+                    } else {
+                        null
                     }
-                    message = if (lines.isEmpty()) "No line items were detected. Add each item and verify every value before issuing." else
-                        "Review all detected fields. OCR can misread amounts and tax rates."
+                    when (cloudResult) {
+                        is CloudScanResult.Success -> applySuggestion(
+                            cloudResult.suggestion,
+                            "Google Gemini cloud (image sent to Google)",
+                        )
+                        is CloudScanResult.Unavailable -> {
+                            message = "Cloud scan unavailable (${cloudResult.reason}). Trying offline text recognition…"
+                            when (val ocr = OcrScanner.recognize(context, uri)) {
+                                is ScanResult.Success -> applySuggestion(OcrParser.parse(ocr.text), "Offline text recognition")
+                                ScanResult.NoText -> message = "Cloud scan unavailable (${cloudResult.reason}). On-device AI also failed ($reason), and offline OCR found no text. Enter details manually or try a clearer photo."
+                                is ScanResult.Failure -> message = "Cloud scan unavailable (${cloudResult.reason}). On-device AI also failed ($reason). ${ocr.message}"
+                            }
+                        }
+                        null -> {
+                            message = "On-device AI unavailable ($reason). Trying offline text recognition…"
+                            when (val ocr = OcrScanner.recognize(context, uri)) {
+                                is ScanResult.Success -> applySuggestion(OcrParser.parse(ocr.text), "Offline text recognition")
+                                ScanResult.NoText -> message = "On-device AI unavailable ($reason). No readable text found either. Use a clear, well-lit photo or enter details manually."
+                                is ScanResult.Failure -> message = "On-device AI unavailable ($reason). ${ocr.message}"
+                            }
+                        }
+                    }
                 }
-                ScanResult.NoText -> {
-                    rawText = ""
-                    lines.clear()
-                    message = "No readable text found. Enter the bill details below or choose another image."
-                }
-                is ScanResult.Failure -> message = result.message
             }
             busy = false
         }
@@ -153,8 +238,40 @@ fun ScanScreen(repo: Repository) {
     ) {
         item {
             Text("Capture a bill", style = MaterialTheme.typography.headlineMedium)
-            Text("Scan a supplier bill, review every field, then confirm to save it as an invoice.",
+            Text("Try Gemini Nano on your phone first. Cloud scanning is optional and requires your consent; review every suggestion before saving.",
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(isPurchaseBill, { isPurchaseBill = true }, label = { Text("Supplier purchase") })
+                FilterChip(!isPurchaseBill, { isPurchaseBill = false }, label = { Text("Sales invoice") })
+            }
+        }
+        item {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Switch(
+                            checked = allowCloudScan,
+                            onCheckedChange = { allowCloudScan = it },
+                            enabled = CloudScanConfig.isConfigured,
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Column {
+                            Text("Allow Google cloud scan", style = MaterialTheme.typography.titleSmall)
+                            Text(
+                                if (CloudScanConfig.isConfigured) {
+                                    "Only used if on-device AI fails. The bill image will be sent to Google."
+                                } else {
+                                    "Cloud Run is not configured in this app build."
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+            }
         }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -175,16 +292,24 @@ fun ScanScreen(repo: Repository) {
                 }
             }
         }
-        if (busy) item { LinearProgressIndicator(Modifier.fillMaxWidth()); Text("Reading bill on this device…") }
+        if (busy) item { LinearProgressIndicator(Modifier.fillMaxWidth()); Text(message ?: "Preparing on-device AI…") }
         message?.let { text -> item { Text(text, color = MaterialTheme.colorScheme.primary) } }
         if (imageUri != null && !busy) {
-            item { Text("Review before issuing", style = MaterialTheme.typography.titleLarge) }
+            item { Text("Review before ${if (isPurchaseBill) "recording purchase" else "issuing invoice"}", style = MaterialTheme.typography.titleLarge) }
             item {
-                WorkflowField("Customer / supplier name", customer) { customer = it }
+                WorkflowField(if (isPurchaseBill) "Supplier name" else "Customer name", customer) { customer = it }
+                if (!isPurchaseBill) {
+                    WorkflowField("Invoice number (optional)", invoiceNumber) { invoiceNumber = it }
+                    Text(
+                        "Leave blank to assign the next invoice number automatically.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 WorkflowField("Phone", phone) { phone = it }
                 WorkflowField("GSTIN", gstin) { gstin = it.uppercase() }
                 WorkflowField("Address", address) { address = it }
-                WorkflowField("Place of supply", placeOfSupply) { placeOfSupply = it }
+                if (!isPurchaseBill) WorkflowField("Place of supply", placeOfSupply) { placeOfSupply = it }
             }
             items(lines) { line ->
                 Card(Modifier.fillMaxWidth()) {
@@ -210,11 +335,13 @@ fun ScanScreen(repo: Repository) {
                     Icon(Icons.Default.Add, contentDescription = null); Text("Add item")
                 }
             }
-            item { WorkflowField("Payment received ₹", payment, { payment = it }, number = true) }
+            item { WorkflowField(if (isPurchaseBill) "Amount paid ₹" else "Payment received ₹", payment, { payment = it }, number = true) }
             item {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Switch(intraState, { intraState = it }); Spacer(Modifier.width(8.dp))
-                    Text(if (intraState) "Same state · CGST + SGST" else "Inter-state · IGST")
+                if (!isPurchaseBill) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Switch(intraState, { intraState = it }); Spacer(Modifier.width(8.dp))
+                        Text(if (intraState) "Same state · CGST + SGST" else "Inter-state · IGST")
+                    }
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Switch(pricesIncludeGst, { pricesIncludeGst = it }); Spacer(Modifier.width(8.dp))
@@ -223,7 +350,7 @@ fun ScanScreen(repo: Repository) {
             }
             item {
                 rawText.takeIf(String::isNotBlank)?.let {
-                    Text("Recognized text", style = MaterialTheme.typography.titleSmall)
+                    Text(scanSource.ifBlank { "Recognized text" }, style = MaterialTheme.typography.titleSmall)
                     Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
@@ -250,7 +377,7 @@ fun ScanScreen(repo: Repository) {
                         }
                         val paid = Money.parseRupees(payment.ifBlank { "0" })
                         if (customer.isBlank() || parsedLines.isEmpty() || paid == null) {
-                            message = "Enter a customer, at least one item and a valid payment amount."
+                            message = "Enter a ${if (isPurchaseBill) "supplier" else "customer"}, at least one item and a valid payment amount."
                             return@Button
                         }
                         val source = imageUri
@@ -261,31 +388,48 @@ fun ScanScreen(repo: Repository) {
                                 return@launch
                             }
                             try {
-                                repo.issueInvoice(
-                                    InvoiceDraft(
-                                        Customer(name = customer.trim(), phone = phone.trim(), gstin = gstin.trim().uppercase(),
-                                            billingAddress = address.trim(), shippingAddress = address.trim()),
-                                        parsedLines,
-                                        paid,
-                                        intraState,
-                                        placeOfSupply,
-                                        pricesIncludeGst,
-                                        savedImage,
+                                if (isPurchaseBill) {
+                                    repo.savePurchase(
+                                        PurchaseDraft(
+                                            Supplier(name = customer.trim(), phone = phone.trim(), gstin = gstin.trim().uppercase(), address = address.trim()),
+                                            parsedLines,
+                                            paid,
+                                            pricesIncludeGst = pricesIncludeGst,
+                                            scanImagePath = savedImage,
+                                        )
                                     )
-                                )
+                                } else {
+                                    repo.issueInvoice(
+                                        InvoiceDraft(
+                                            Customer(name = customer.trim(), phone = phone.trim(), gstin = gstin.trim().uppercase(),
+                                                billingAddress = address.trim(), shippingAddress = address.trim()),
+                                            parsedLines,
+                                            paid,
+                                            intraState,
+                                            placeOfSupply,
+                                            pricesIncludeGst,
+                                            savedImage,
+                                            invoiceNumber = invoiceNumber,
+                                        )
+                                    )
+                                }
                                 cameraFile?.delete()
                                 cameraFile = null
                                 imageUri = null
                                 lines.clear()
-                                message = "Invoice issued. The original scan is saved privately on this device."
+                                message = if (isPurchaseBill) {
+                                    "Supplier purchase recorded, stock updated, and original scan saved on this device."
+                                } else {
+                                    "Invoice issued. The original scan is saved privately on this device."
+                                }
                             } catch (e: IllegalArgumentException) {
                                 ScanStore.discard(savedImage)
-                                message = e.message ?: "The invoice could not be issued."
+                                message = e.message ?: if (isPurchaseBill) "The purchase could not be recorded." else "The invoice could not be issued."
                             }
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),
-                ) { Text("Confirm and issue invoice") }
+                ) { Text(if (isPurchaseBill) "Confirm and record purchase" else "Confirm and issue invoice") }
             }
         }
     }
@@ -302,7 +446,8 @@ fun OperationsScreen(repo: Repository) {
     var section by remember { mutableStateOf("Inventory") }
     var showPurchase by remember { mutableStateOf(false) }
     var showExpense by remember { mutableStateOf(false) }
-    var showEmployee by remember { mutableStateOf(false) }
+    var showAddEmployee by remember { mutableStateOf(false) }
+    var managingEmployee by remember { mutableStateOf<Employee?>(null) }
     var showAddProduct by remember { mutableStateOf(false) }
     var adjustProduct by remember { mutableStateOf<Product?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
@@ -361,6 +506,10 @@ fun OperationsScreen(repo: Repository) {
                                 Text("Total ${Money.format(purchase.totalPaise)}")
                                 Text("Due ${Money.format(purchase.totalPaise - purchase.paidPaise)}")
                             }
+                            purchase.scanImagePath?.let {
+                                Text("Original supplier bill saved on this device.", style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
                         }
                     }
                 }
@@ -375,16 +524,21 @@ fun OperationsScreen(repo: Repository) {
                 }
             }
             else -> LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                item { Button(onClick = { showEmployee = true }, Modifier.fillMaxWidth()) { Icon(Icons.Default.Add, null); Text("Add team member or record pay") } }
+                item { Button(onClick = { showAddEmployee = true }, Modifier.fillMaxWidth()) { Icon(Icons.Default.Add, null); Text("Add employee") } }
                 if (employees.isEmpty()) item { Text("Add employees to keep a salary ledger.") }
                 items(employees, key = { it.id }) { employee ->
                     var balance by remember(employee.id) { mutableLongStateOf(0L) }
                     LaunchedEffect(employee.id) { repo.salaryBalance(employee.id).collect { balance = it } }
-                    Card(Modifier.fillMaxWidth()) {
-                        Column(Modifier.padding(14.dp)) {
-                            Text(employee.name, style = MaterialTheme.typography.titleMedium)
-                            Text("Monthly salary ${Money.format(employee.monthlySalaryPaise)} · balance ${Money.format(balance)}",
-                                style = MaterialTheme.typography.bodySmall)
+                    Card(Modifier.fillMaxWidth().clickable { managingEmployee = employee }) {
+                        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(employee.name, style = MaterialTheme.typography.titleMedium)
+                                Text("Started ${employee.startDateMillis.takeIf { it > 0 }?.let(::formatDate) ?: "date not recorded"}",
+                                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("Monthly salary ${Money.format(employee.monthlySalaryPaise)} · due ${Money.format(balance)}",
+                                    style = MaterialTheme.typography.bodySmall)
+                            }
+                            Text("Manage", color = MaterialTheme.colorScheme.primary)
                         }
                     }
                 }
@@ -413,16 +567,22 @@ fun OperationsScreen(repo: Repository) {
             catch (e: IllegalArgumentException) { message = e.message }
         }
     }
-    if (showEmployee) PayrollDialog(employees, onDismiss = { showEmployee = false }) { name, salary, employee, type, amount ->
-        showEmployee = false
+    if (showAddEmployee) EmployeeCreateDialog(onDismiss = { showAddEmployee = false }) { employee ->
+        showAddEmployee = false
         scope.launch {
-            try {
-                val employeeId = employee?.id ?: repo.addEmployee(Employee(name = name, monthlySalaryPaise = salary))
-                if (employee == null && salary > 0) repo.recordSalary(employeeId, SalaryType.SALARY_ADDED, salary)
-                else if (type != null && amount > 0) repo.recordSalary(employeeId, type, amount)
-                message = "Payroll entry saved."
-            } catch (e: IllegalArgumentException) { message = e.message }
+            try { repo.addEmployee(employee); message = "Employee added. Record salary accruals and payments from their profile." }
+            catch (e: IllegalArgumentException) { message = e.message }
+        }
+    }
+    managingEmployee?.let { employee ->
+        EmployeePayrollDialog(repo, employee, onDismiss = { managingEmployee = null }) { type, amount, date, note ->
+            scope.launch {
+                try {
+                    repo.recordSalary(employee.id, type, amount, note, date)
+                    message = "Payroll entry saved."
+                } catch (e: IllegalArgumentException) { message = e.message }
             }
+        }
     }
     adjustProduct?.let { product ->
         StockAdjustmentDialog(product, onDismiss = { adjustProduct = null }) { delta, note ->
@@ -521,51 +681,137 @@ private fun ExpenseDialog(onDismiss: () -> Unit, onSave: (Expense) -> Unit) {
 }
 
 @Composable
-private fun PayrollDialog(
-    employees: List<Employee>,
+private fun EmployeeCreateDialog(
     onDismiss: () -> Unit,
-    onSave: (String, Long, Employee?, SalaryType?, Long) -> Unit,
+    onSave: (Employee) -> Unit,
 ) {
     var name by remember { mutableStateOf("") }
     var salary by remember { mutableStateOf("") }
-    var amount by remember { mutableStateOf("") }
-    var selected by remember { mutableStateOf(employees.firstOrNull()) }
-    var type by remember { mutableStateOf(SalaryType.PAYMENT) }
-    var menu by remember { mutableStateOf(false) }
+    var startDate by remember { mutableLongStateOf(todayMillis()) }
     var error by remember { mutableStateOf<String?>(null) }
-    AlertDialog(onDismissRequest = onDismiss, title = { Text("Team & payroll") },
-        text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (employees.isNotEmpty()) {
-                Box {
-                    OutlinedButton(onClick = { menu = true }, Modifier.fillMaxWidth()) { Text(selected?.name ?: "Choose team member") }
-                    DropdownMenu(menu, { menu = false }) { employees.forEach { item -> DropdownMenuItem({ Text(item.name) }, { selected = item; menu = false }) } }
-                }
-            }
-            if (selected == null) {
-                WorkflowField("New team member name", name) { name = it }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Add employee") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                WorkflowField("Employee name", name) { name = it }
                 WorkflowField("Monthly salary ₹", salary, { salary = it }, true)
-            } else {
-                Text("Record a salary, advance or payment.")
-                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    SalaryType.values().forEach { kind ->
-                        FilterChip(type == kind, { type = kind }, label = {
-                            Text(when (kind) { SalaryType.SALARY_ADDED -> "Salary"; SalaryType.ADVANCE -> "Advance"; SalaryType.PAYMENT -> "Paid" })
-                        })
+                DatePickerField("Date started", startDate) { startDate = it }
+                Text("Salary only becomes due when you record an accrual in the employee ledger.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                val salaryPaise = Money.parseRupees(salary)
+                if (name.isBlank() || salaryPaise == null) error = "Enter an employee name and a valid monthly salary."
+                else onSave(Employee(name = name.trim(), monthlySalaryPaise = salaryPaise, startDateMillis = startDate))
+            }) { Text("Save employee") }
+        },
+        dismissButton = { TextButton(onDismiss) { Text("Cancel") } },
+    )
+}
+
+@Composable
+private fun EmployeePayrollDialog(
+    repo: Repository,
+    employee: Employee,
+    onDismiss: () -> Unit,
+    onSaveEntry: (SalaryType, Long, Long, String) -> Unit,
+) {
+    val entries by repo.salaryEntries(employee.id).collectAsStateWithLifecycle(emptyList())
+    val balance by repo.salaryBalance(employee.id).collectAsStateWithLifecycle(0L)
+    var entryType by remember { mutableStateOf<SalaryType?>(null) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(employee.name) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Started ${employee.startDateMillis.takeIf { it > 0 }?.let(::formatDate) ?: "date not recorded"}")
+                Text("Monthly salary ${Money.format(employee.monthlySalaryPaise)}")
+                Text("Salary due ${Money.format(balance)}", style = MaterialTheme.typography.titleMedium,
+                    color = if (balance > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    SalaryType.values().forEach { type ->
+                        FilledTonalButton(onClick = { entryType = type }, modifier = Modifier.weight(1f)) {
+                            Text(salaryTypeLabel(type))
+                        }
                     }
                 }
-                WorkflowField("Amount ₹", amount, { amount = it }, true)
+                Text("Salary history", style = MaterialTheme.typography.titleMedium)
+                if (entries.isEmpty()) {
+                    Text("No salary or payment entries yet.", style = MaterialTheme.typography.bodySmall)
+                } else {
+                    entries.forEach { entry ->
+                        val type = runCatching { SalaryType.valueOf(entry.type) }.getOrNull()
+                        val sign = if (type == SalaryType.SALARY_ADDED) "+" else "−"
+                        ListItem(
+                            headlineContent = { Text("${type?.let(::salaryTypeLabel) ?: entry.type} · ${Money.format(entry.amountPaise)}") },
+                            supportingContent = {
+                                Text(listOf(formatDate(entry.dateMillis), entry.note).filter(String::isNotBlank).joinToString(" · "))
+                            },
+                            trailingContent = { Text(sign) },
+                        )
+                    }
+                }
             }
-            error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        } },
+        },
+        confirmButton = { TextButton(onDismiss) { Text("Done") } },
+    )
+    entryType?.let { type ->
+        SalaryEntryDialog(
+            employee = employee,
+            type = type,
+            onDismiss = { entryType = null },
+            onSave = { amount, date, note ->
+                entryType = null
+                onSaveEntry(type, amount, date, note)
+            },
+        )
+    }
+}
+
+@Composable
+private fun SalaryEntryDialog(
+    employee: Employee,
+    type: SalaryType,
+    onDismiss: () -> Unit,
+    onSave: (Long, Long, String) -> Unit,
+) {
+    var amount by remember(type) {
+        mutableStateOf(if (type == SalaryType.SALARY_ADDED) rupeesText(employee.monthlySalaryPaise) else "")
+    }
+    var date by remember(type) { mutableLongStateOf(todayMillis()) }
+    var note by remember(type) { mutableStateOf("") }
+    var error by remember { mutableStateOf<String?>(null) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("${salaryTypeLabel(type)} · ${employee.name}") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                WorkflowField("Amount ₹", amount, { amount = it }, true)
+                DatePickerField("Entry date", date) { date = it }
+                WorkflowField("Note (optional)", note) { note = it }
+                error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            }
+        },
         confirmButton = { TextButton(onClick = {
-            val salaryPaise = Money.parseRupees(salary) ?: 0L
-            val amountPaise = Money.parseRupees(amount) ?: 0L
-            if (selected == null && (name.isBlank() || salaryPaise < 0)) error = "Enter a name and a valid monthly salary."
-            else if (selected != null && amountPaise <= 0) error = "Enter a valid payment amount."
-            else onSave(name.trim(), salaryPaise, selected, if (selected == null) null else type, amountPaise)
-        }) { Text("Save") } },
+            val amountPaise = Money.parseRupees(amount)
+            if (amountPaise == null || amountPaise <= 0) error = "Enter a valid amount greater than zero."
+            else onSave(amountPaise, date, note.trim())
+        }) { Text("Save entry") } },
         dismissButton = { TextButton(onDismiss) { Text("Cancel") } })
 }
+
+private fun salaryTypeLabel(type: SalaryType): String = when (type) {
+    SalaryType.SALARY_ADDED -> "Accrue salary"
+    SalaryType.ADVANCE -> "Advance taken"
+    SalaryType.PAYMENT -> "Payment"
+}
+
+private fun formatDate(dateMillis: Long): String =
+    SimpleDateFormat("dd MMM yyyy", Locale("en", "IN")).format(Date(dateMillis))
 
 @Composable
 private fun StockAdjustmentDialog(product: Product, onDismiss: () -> Unit, onSave: (Double, String) -> Unit) {

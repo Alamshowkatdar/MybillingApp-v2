@@ -102,11 +102,13 @@ object Validation {
     private val GSTIN = Regex("^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$")
     private val PHONE = Regex("^(\\+?91)?[6-9][0-9]{9}$")
     private val UPI = Regex("^[A-Za-z0-9._\\-]{2,}@[A-Za-z0-9]{2,}$")
+    private val INVOICE_NUMBER = Regex("^[A-Za-z0-9][A-Za-z0-9/-]{0,15}$")
 
     /** Pattern check only. Does NOT verify the GSTIN exists or its checksum. */
     fun gstinFormatOk(s: String) = s.isBlank() || GSTIN.matches(s.trim().uppercase())
     fun phoneOk(s: String) = s.isBlank() || PHONE.matches(s.replace(" ", "").replace("-", ""))
     fun upiOk(s: String) = UPI.matches(s.trim())
+    fun invoiceNumberOk(s: String) = s.isBlank() || INVOICE_NUMBER.matches(s.trim())
 
     /** True/false when both GSTINs have a state code, null when it cannot be derived. */
     fun sameState(a: String, b: String): Boolean? {

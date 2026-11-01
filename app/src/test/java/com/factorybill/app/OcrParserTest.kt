@@ -36,4 +36,26 @@ class OcrParserTest {
         val s = OcrParser.parse("   \n ~~ \n")
         assertNull(s.customerName); assertTrue(s.lines.isEmpty()); assertNull(s.paymentPaise)
     }
+
+    @Test fun extractsTableRowsWithCurrencyAndAmounts() {
+        val s = OcrParser.parse(
+            """
+                1. Stainless steel bolt 7318 200 pcs ₹ 1,250.00 18% 2,95,000.00
+                Total ₹ 2,95,000.00
+            """.trimIndent()
+        )
+        assertEquals(1, s.lines.size)
+        assertEquals("Stainless steel bolt 7318", s.lines[0].name)
+        assertEquals(200.0, s.lines[0].qty!!, 0.0)
+        assertEquals(125_000L, s.lines[0].unitPricePaise)
+        assertEquals(18.0, s.lines[0].gstRate!!, 0.0)
+    }
+
+    @Test fun itemNameCanContainPunctuationAndUnitPriceThousandsSeparators() {
+        val s = OcrParser.parse("M.S. Angle (25 x 25) 4 1,250.50 18%")
+        assertEquals(1, s.lines.size)
+        assertEquals("M.S. Angle (25 x 25)", s.lines[0].name)
+        assertEquals(4.0, s.lines[0].qty!!, 0.0)
+        assertEquals(125_050L, s.lines[0].unitPricePaise)
+    }
 }

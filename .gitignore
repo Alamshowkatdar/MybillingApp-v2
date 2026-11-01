@@ -8,3 +8,7 @@ local.properties
 *.aab
 *.jks
 *.keystore
+__pycache__/
+.venv/
+firebase-hosting/public/factorybill.apk
+.firebase/

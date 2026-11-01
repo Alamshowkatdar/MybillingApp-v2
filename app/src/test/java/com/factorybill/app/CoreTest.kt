@@ -60,6 +60,8 @@ class CoreTest {
         assertFalse(Validation.gstinFormatOk("27ABCDE1234F1X5"))
         assertTrue(Validation.phoneOk("98123 45678")); assertFalse(Validation.phoneOk("12345"))
         assertTrue(Validation.upiOk("shop@okbank")); assertFalse(Validation.upiOk("no-at-sign"))
+        assertTrue(Validation.invoiceNumberOk("")); assertTrue(Validation.invoiceNumberOk(" AB-102/26 "))
+        assertFalse(Validation.invoiceNumberOk("INV 102")); assertFalse(Validation.invoiceNumberOk("INV-12345678901234"))
         assertEquals(true, Validation.sameState("27ABCDE1234F1Z5", "27AAAAA0000A1Z5"))
         assertEquals(false, Validation.sameState("29ABCDE1234F1Z5", "27AAAAA0000A1Z5"))
         assertNull(Validation.sameState("", "27AAAAA0000A1Z5"))

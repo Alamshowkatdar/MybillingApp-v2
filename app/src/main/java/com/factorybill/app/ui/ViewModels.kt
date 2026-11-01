@@ -59,6 +59,7 @@ class InvoiceViewModel(private val repo: Repository) : ViewModel() {
     private val company = repo.company.state(viewModelScope, null)
 
     var customerDraft by mutableStateOf(Customer(name = ""))
+    var invoiceNumber by mutableStateOf("")
     var intraState by mutableStateOf(true)
     var pricesIncludeGst by mutableStateOf(false)
     var placeOfSupply by mutableStateOf("")
@@ -116,9 +117,19 @@ class InvoiceViewModel(private val repo: Repository) : ViewModel() {
             )
         }
         guarded {
-            repo.issueInvoice(InvoiceDraft(c, draftLines, pay, intraState, placeOfSupply, pricesIncludeGst))
+            repo.issueInvoice(
+                InvoiceDraft(
+                    customer = c,
+                    lines = draftLines,
+                    paymentPaise = pay,
+                    intraState = intraState,
+                    placeOfSupply = placeOfSupply,
+                    pricesIncludeGst = pricesIncludeGst,
+                    invoiceNumber = invoiceNumber,
+                )
+            )
             lines.clear(); lines.add(LineState())
-            payment = ""; customerDraft = Customer(name = ""); placeOfSupply = ""; message = "Invoice issued"
+            payment = ""; invoiceNumber = ""; customerDraft = Customer(name = ""); placeOfSupply = ""; message = "Invoice issued"
         }
     }
 }
