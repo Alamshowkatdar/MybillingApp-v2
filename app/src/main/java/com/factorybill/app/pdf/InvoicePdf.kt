@@ -46,7 +46,7 @@ object InvoicePdf {
             page = doc.startPage(PdfDocument.PageInfo.Builder(A4_WIDTH_POINTS, A4_HEIGHT_POINTS, n).create()); y = M
         }
         fun need(h: Float) { if (y + h > A4_HEIGHT_POINTS - M - 24) newPage() }
-        fun footer() { c.drawText("MybillingApp  ·  A4  ·  Page $n", RIGHT, A4_HEIGHT_POINTS - 24f, p(8f, color = Color.GRAY, align = Paint.Align.RIGHT)) }
+        fun footer() { c.drawText("MybillingApp™  ·  Alam Showkat  ·  A4  ·  Page $n", RIGHT, A4_HEIGHT_POINTS - 24f, p(8f, color = Color.GRAY, align = Paint.Align.RIGHT)) }
         fun finish() { footer(); doc.finishPage(page) }
     }
 

@@ -175,7 +175,9 @@ fun MoreScreen(settings: SettingsStore, onNavigate: (String) -> Unit) {
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    Text("MybillingApp · version ${BuildConfig.VERSION_NAME}",
+                    Text("MybillingApp™ · by Alam Showkat",
+                        style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("© 2026 Alam Showkat · version ${BuildConfig.VERSION_NAME}",
                         style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }

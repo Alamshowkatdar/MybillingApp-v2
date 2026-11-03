@@ -1,6 +1,8 @@
-# MybillingApp
+# MybillingApp™
 
-MybillingApp is an offline-first GST billing and business records app for Android. It keeps invoices, purchases, inventory, payroll and expenses in a local Room database and performs bill OCR on-device.
+MybillingApp™ is an offline-first GST billing and business records app for Android. It keeps invoices, purchases, inventory, payroll and expenses in a local Room database and performs bill OCR on-device.
+
+Created and maintained by **Alam Showkat**. © 2026 Alam Showkat. All rights reserved.
 
 ## Features
 
@@ -15,6 +17,12 @@ MybillingApp is an offline-first GST billing and business records app for Androi
 All amounts are stored as integer paise. Invoice line amounts round to paise using HALF_UP. Tax-exclusive prices calculate GST as `taxable value × rate / 100`; tax-inclusive prices extract GST as `gross value × rate / (100 + rate)`. Each line is rounded before invoice totals are summed. Intra-state GST is split between CGST and SGST (an odd paise is assigned to SGST); inter-state GST is reported as IGST.
 
 These are standard GST billing calculations, implemented independently; this app does not copy Vyapar code. GSTIN checks validate format only, not registration status or checksum. Confirm the applicable tax treatment, HSN/SAC, place of supply, invoice numbering, and rounding with a qualified tax professional before relying on invoices for statutory filings.
+
+## Author and trademark
+
+**Alam Showkat™** is the trademark and brand of the author of this project.
+
+MybillingApp™ is designed, built and maintained by **Alam Showkat**. Copyright © 2026 Alam Showkat. All rights reserved. The MybillingApp and Alam Showkat names, logos and branding may not be used to endorse or promote derived products without written permission.
 
 ## Build and test
 
