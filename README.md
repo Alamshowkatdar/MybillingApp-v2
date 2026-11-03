@@ -4,6 +4,12 @@ MybillingApp™ is an offline-first GST billing and business records app for And
 
 Created and maintained by **Alam Showkat**. © 2026 Alam Showkat. All rights reserved.
 
+## Download
+
+Install the latest signed release APK from **[GitHub Releases](https://github.com/Alamshowkatdar/MybillingApp-v2/releases/latest)**. The APK is attached to each release rather than committed to this repository; build artifacts are intentionally excluded from Git.
+
+If a debug-signed build of `com.factorybill.app` is already on the phone, Android refuses the update and the app must be uninstalled first, which erases its local data. Back up anything important before switching.
+
 ## Features
 
 - Create, issue, edit, review, share, print, or void invoices; permanently delete an invoice with confirmation. Choose an invoice number or let the app assign one. Voiding preserves the record and reverses its inventory movements.

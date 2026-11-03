@@ -12,3 +12,4 @@ __pycache__/
 .venv/
 firebase-hosting/public/factorybill.apk
 .firebase/
+dist/
