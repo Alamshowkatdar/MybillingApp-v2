@@ -28,8 +28,8 @@ android {
         applicationId = "com.factorybill.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 7
-        versionName = "2.1"
+        versionCode = 8
+        versionName = "2.2"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "CLOUD_SCAN_URL", "\"${configString("factoryBillCloudScanUrl", "FACTORYBILL_CLOUD_SCAN_URL")}\"")
         buildConfigField("String", "FIREBASE_PROJECT_ID", "\"${configString("factoryBillFirebaseProjectId", "FACTORYBILL_FIREBASE_PROJECT_ID")}\"")

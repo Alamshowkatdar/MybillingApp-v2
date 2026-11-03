@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="108" y2="108" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#043528"/>
+      <stop offset="0.55" stop-color="#0B5D46"/>
+      <stop offset="1" stop-color="#0E7A5A"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.82" cy="0.12" r="0.62">
+      <stop offset="0" stop-color="#3FD6A0" stop-opacity="0.5"/>
+      <stop offset="1" stop-color="#3FD6A0" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="squircle">
+      <rect x="0" y="0" width="108" height="108" rx="24" ry="24"/>
+    </clipPath>
+  </defs>
+
+  <g clip-path="url(#squircle)">
+    <rect width="108" height="108" fill="url(#bg)"/>
+    <rect width="108" height="108" fill="url(#glow)"/>
+
+    <!-- receipt shadow -->
+    <path d="M35.5 33 Q35.5 28 40.5 28 H67.5 Q72.5 28 72.5 33 V76.5
+             L69.17 73 L65.83 76.5 L62.5 73 L59.17 76.5 L55.83 73 L52.5 76.5
+             L49.17 73 L45.83 76.5 L42.5 73 L39.17 76.5 L35.5 73 Z"
+          fill="#001A12" opacity="0.28"/>
+
+    <!-- receipt -->
+    <path d="M35.5 33 Q35.5 28 40.5 28 H67.5 Q72.5 28 72.5 33 V74
+             L69.17 70.5 L65.83 74 L62.5 70.5 L59.17 74 L55.83 70.5 L52.5 74
+             L49.17 70.5 L45.83 74 L42.5 70.5 L39.17 74 L35.5 70.5 Z"
+          fill="#FFFFFF"/>
+
+    <!-- rupee -->
+    <g stroke="#0B5D46" stroke-width="4.4" stroke-linecap="round" fill="none">
+      <path d="M43 36.5 H65"/>
+      <path d="M43 47 H65"/>
+      <path d="M49 36.5 C68.5 36.5 68.5 47 49 47"/>
+      <path d="M49 36.5 V65.5"/>
+      <path d="M49 55 L63.5 65.5"/>
+    </g>
+  </g>
+</svg>

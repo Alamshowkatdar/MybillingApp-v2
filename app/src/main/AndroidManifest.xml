@@ -6,7 +6,9 @@
     <application
         android:name=".FactoryApp"
         android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
         android:label="MybillingApp"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
         <activity android:name=".MainActivity" android:exported="true"
             android:windowSoftInputMode="adjustResize">
