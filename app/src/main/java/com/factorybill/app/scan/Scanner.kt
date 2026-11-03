@@ -169,6 +169,20 @@ object ScanStore {
         if (out.length() > 0) out.absolutePath else null
     } catch (e: Exception) { null }
 
+    /** Copy a gallery/camera image into private storage, keeping a sensible extension. */
+    fun saveAttachment(ctx: Context, uri: Uri): String? = try {
+        val extension = when (ctx.contentResolver.getType(uri)?.lowercase()) {
+            "image/png" -> ".png"
+            "image/webp" -> ".webp"
+            "image/heic", "image/heif" -> ".heic"
+            else -> ".jpg"
+        }
+        val dir = File(ctx.filesDir, "scans").apply { mkdirs() }
+        val out = File(dir, UUID.randomUUID().toString() + extension)
+        ctx.contentResolver.openInputStream(uri)?.use { i -> out.outputStream().use { o -> i.copyTo(o) } }
+        if (out.length() > 0) out.absolutePath else null
+    } catch (e: Exception) { null }
+
     /** Call when the user abandons a scan so no orphan images are left behind. */
     fun discard(path: String?) { if (path != null) File(path).delete() }
 }

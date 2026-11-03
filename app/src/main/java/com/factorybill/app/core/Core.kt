@@ -3,6 +3,11 @@ package com.factorybill.app.core
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.net.URLEncoder
+import java.time.Instant
+import java.time.YearMonth
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 /** Money is ALWAYS stored as Long paise. Never use Float/Double for amounts. */
 object Money {
@@ -30,6 +35,46 @@ object Money {
 
 object Gst {
     val STANDARD_RATES = listOf(0.0, 0.25, 3.0, 5.0, 12.0, 18.0, 28.0)
+}
+
+/** Calendar month helpers used by payroll and dashboard summaries. */
+object Periods {
+    private val KEY = Regex("^\\d{4}-(0[1-9]|1[0-2])$")
+    private val LABEL = DateTimeFormatter.ofPattern("MMM yyyy", Locale("en", "IN"))
+
+    fun monthKey(millis: Long): String =
+        YearMonth.from(Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()).toLocalDate()).toString()
+
+    fun validMonthKey(key: String): Boolean = KEY.matches(key)
+
+    fun monthLabel(key: String): String =
+        runCatching { YearMonth.parse(key).format(LABEL) }.getOrDefault(key)
+
+    fun monthLabel(millis: Long): String = monthLabel(monthKey(millis))
+
+    fun startOfMonth(millis: Long): Long =
+        YearMonth.from(Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()).toLocalDate())
+            .atDay(1).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+
+    fun endOfMonth(millis: Long): Long =
+        YearMonth.from(Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()).toLocalDate())
+            .atEndOfMonth().atTime(23, 59, 59, 999_000_000).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+
+    fun shiftMonth(millis: Long, months: Long): Long {
+        val date = Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()).toLocalDate()
+        return date.withDayOfMonth(1).plusMonths(months)
+            .atTime(12, 0).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+    }
+}
+
+/** Shared payment-state calculation for invoices and purchases. */
+enum class PaymentState { PAID, PARTIAL, UNPAID, VOID }
+
+fun paymentState(totalPaise: Long, paidPaise: Long, voided: Boolean = false): PaymentState = when {
+    voided -> PaymentState.VOID
+    paidPaise >= totalPaise -> PaymentState.PAID
+    paidPaise > 0 -> PaymentState.PARTIAL
+    else -> PaymentState.UNPAID
 }
 
 data class LineInput(
@@ -103,12 +148,14 @@ object Validation {
     private val PHONE = Regex("^(\\+?91)?[6-9][0-9]{9}$")
     private val UPI = Regex("^[A-Za-z0-9._\\-]{2,}@[A-Za-z0-9]{2,}$")
     private val INVOICE_NUMBER = Regex("^[A-Za-z0-9][A-Za-z0-9/-]{0,15}$")
+    private val INVOICE_PREFIX = Regex("^[A-Za-z0-9/-]{0,8}$")
 
     /** Pattern check only. Does NOT verify the GSTIN exists or its checksum. */
     fun gstinFormatOk(s: String) = s.isBlank() || GSTIN.matches(s.trim().uppercase())
     fun phoneOk(s: String) = s.isBlank() || PHONE.matches(s.replace(" ", "").replace("-", ""))
     fun upiOk(s: String) = UPI.matches(s.trim())
     fun invoiceNumberOk(s: String) = s.isBlank() || INVOICE_NUMBER.matches(s.trim())
+    fun invoicePrefixOk(s: String) = INVOICE_PREFIX.matches(s.trim())
 
     /** True/false when both GSTINs have a state code, null when it cannot be derived. */
     fun sameState(a: String, b: String): Boolean? {

@@ -1,12 +1,13 @@
-# FactoryBill
+# MybillingApp
 
-FactoryBill is an offline-first GST invoicing and factory operations app for Android. It keeps business records in a local Room database and performs bill OCR on-device.
+MybillingApp is an offline-first GST billing and business records app for Android. It keeps invoices, purchases, inventory, payroll and expenses in a local Room database and performs bill OCR on-device.
 
 ## Features
 
-- Create, issue, review, share, print, and void invoices; choose an invoice number or let the app assign one. Voiding preserves the record and reverses its inventory movements.
+- Create, issue, edit, review, share, print, or void invoices; permanently delete an invoice with confirmation. Choose an invoice number or let the app assign one. Voiding preserves the record and reverses its inventory movements.
+- Attach a camera or gallery photo to any invoice or supplier bill. Photos are copied into private app storage, can be opened again later, and are removed with the record.
 - Maintain customers, products, HSN/SAC codes, opening stock, and manual stock adjustments.
-- Record supplier purchases, expenses, employee start dates, monthly salary accruals, advances, and dated payments with a per-employee ledger.
+- Record, edit, void, or delete supplier purchases, plus expenses, employee start dates, monthly salary accruals, advances, and dated payments with a per-employee ledger. Editing a purchase keeps payments already recorded and adjusts stock to the new items.
 - Scan a supplier bill into purchases/stock or a sales bill into an invoice. Gemini Nano first extracts bill fields locally through Android AI Core. If it cannot read the bill, an optional Google Gemini Cloud Run service can analyze the image after the user enables cloud scanning; review every suggestion before saving.
 - Configure company GST and bank details, an optional company logo for the dashboard and invoices, invoice template, light/dark theme, and accent color.
 - Generate Classic, Modern, or Compact A4 invoice PDFs with party details, HSN, place of supply, tax split, balance due, and an optional UPI payment QR.
@@ -24,7 +25,7 @@ Open the project in Android Studio with JDK 17 and Android SDK 34, or run:
 ./gradlew :app:assembleDebug
 ```
 
-Install on a connected device with `./gradlew :app:installDebug`. The Room migration instrumentation test requires an emulator or device.
+Install on a connected device with `./gradlew :app:installDebug`. The Room migration instrumentation test requires an emulator or device. Note that `connectedDebugAndroidTest` uninstalls the app after the run, which erases its local data; back up anything important before running it on a phone you use.
 
 ## Public Firebase Hosting download
 

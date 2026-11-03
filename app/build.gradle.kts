@@ -28,8 +28,8 @@ android {
         applicationId = "com.factorybill.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 5
-        versionName = "1.4"
+        versionCode = 7
+        versionName = "2.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "CLOUD_SCAN_URL", "\"${configString("factoryBillCloudScanUrl", "FACTORYBILL_CLOUD_SCAN_URL")}\"")
         buildConfigField("String", "FIREBASE_PROJECT_ID", "\"${configString("factoryBillFirebaseProjectId", "FACTORYBILL_FIREBASE_PROJECT_ID")}\"")
@@ -91,6 +91,9 @@ dependencies {
     implementation("androidx.room:room-runtime:2.8.5")
     implementation("androidx.room:room-ktx:2.8.5")
     ksp("androidx.room:room-compiler:2.8.5")
+    // Room 2.8's migration tooling (used by androidTest) needs kotlinx-serialization 1.8.x.
+    // Navigation 2.8.0 pulls an older 1.6.3 BOM, which otherwise forces an incompatible mix.
+    implementation(platform("org.jetbrains.kotlinx:kotlinx-serialization-bom:1.8.1"))
 
     // Bundled (offline) Latin-script text recognition. Handwriting accuracy is limited.
     implementation("com.google.mlkit:text-recognition:16.0.1")

@@ -20,14 +20,29 @@ class MigrationTest {
             execSQL("INSERT INTO invoices(number,dateMillis,customerId,intraState,taxablePaise,gstPaise,totalPaise,paymentPaise,scanImagePath,status,voidReason) VALUES('INV-0001',1,1,1,10000,1800,11800,0,NULL,'ISSUED',NULL)")
             close()
         }
-        val db = helper.runMigrationsAndValidate("mig-test", 6, true, *AppDatabase.MIGRATIONS)
+        val db = helper.runMigrationsAndValidate("mig-test", 7, true, *AppDatabase.MIGRATIONS)
         db.query("SELECT COUNT(*) FROM customers").use { c -> c.moveToFirst(); assertEquals(1, c.getInt(0)) }
-        db.query("SELECT pricesIncludeGst, placeOfSupply FROM invoices WHERE number = 'INV-0001'").use { c ->
+        db.query("SELECT pricesIncludeGst, placeOfSupply, dueDateMillis, notes FROM invoices WHERE number = 'INV-0001'").use { c ->
             c.moveToFirst()
             assertEquals(0, c.getInt(0))
             assertEquals("", c.getString(1))
+            assertEquals(0L, c.getLong(2))
+            assertEquals("", c.getString(3))
+        }
+        db.query("SELECT email, notes FROM customers LIMIT 1").use { c ->
+            c.moveToFirst()
+            assertEquals("", c.getString(0))
+            assertEquals("", c.getString(1))
         }
         db.query("SELECT hsn, unit FROM invoice_lines LIMIT 0").close()
-        db.query("SELECT logoPath FROM company_profile LIMIT 0").close()
+        db.query("SELECT logoPath, invoicePrefix, termsAndConditions, footerNote FROM company_profile LIMIT 0").close()
+        db.query("SELECT invoiceId, amountPaise, mode FROM invoice_payments LIMIT 0").close()
+        db.query("SELECT purchaseId, amountPaise, mode FROM purchase_payments LIMIT 0").close()
+        db.query("SELECT number, billNumber, dueDateMillis, status FROM purchases LIMIT 0").close()
+        db.query("SELECT productName, hsn, unit FROM purchase_lines LIMIT 0").close()
+        db.query("SELECT phone, role, notes FROM employees LIMIT 0").close()
+        db.query("SELECT period FROM salary_entries LIMIT 0").close()
+        db.query("SELECT mode FROM expenses LIMIT 0").close()
+        db.query("SELECT contactPerson, email, notes FROM suppliers LIMIT 0").close()
     }
 }

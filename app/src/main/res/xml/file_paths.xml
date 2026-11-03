@@ -2,4 +2,5 @@
 <paths>
     <cache-path name="invoices" path="invoices/" />
     <cache-path name="capture" path="capture/" />
+    <files-path name="scans" path="scans/" />
 </paths>

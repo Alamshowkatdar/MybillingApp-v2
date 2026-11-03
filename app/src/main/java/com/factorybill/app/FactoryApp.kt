@@ -31,7 +31,7 @@ class FactoryApp : Application() {
                 FirebaseAppCheck.getInstance(firebase)
                     .installAppCheckProviderFactory(PlayIntegrityAppCheckProviderFactory.getInstance())
             } catch (error: Exception) {
-                Log.e("FactoryBill", "Optional cloud bill scanning could not initialize.", error)
+                Log.e("MybillingApp", "Optional cloud bill scanning could not initialize.", error)
             }
         }
     }
